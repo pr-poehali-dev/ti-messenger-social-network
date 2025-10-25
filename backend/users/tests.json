@@ -1,0 +1,14 @@
+{
+  "tests": [
+    {
+      "name": "Update user status",
+      "method": "POST",
+      "body": {
+        "user_id": 1,
+        "is_online": true
+      },
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

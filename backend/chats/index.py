@@ -46,13 +46,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                        CASE 
                          WHEN c.user1_id = %s THEN c.user2_id
                          ELSE c.user1_id
-                       END as contact_id
+                       END as contact_id,
+                       CASE 
+                         WHEN c.user1_id = %s THEN u2.is_online
+                         ELSE u1.is_online
+                       END as contact_is_online,
+                       CASE 
+                         WHEN c.user1_id = %s THEN u2.last_seen
+                         ELSE u1.last_seen
+                       END as contact_last_seen
                 FROM chats c
                 JOIN users u1 ON c.user1_id = u1.id
                 JOIN users u2 ON c.user2_id = u2.id
                 WHERE c.user1_id = %s OR c.user2_id = %s
                 ORDER BY c.created_at DESC
-            """, (user_id, user_id, user_id, user_id, user_id))
+            """, (user_id, user_id, user_id, user_id, user_id, user_id, user_id))
             chats = cur.fetchall()
             
             cur.close()

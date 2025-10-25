@@ -38,6 +38,8 @@ interface Chat {
   contact_name: string;
   contact_avatar: string;
   contact_id: number;
+  contact_is_online?: boolean;
+  contact_last_seen?: string;
 }
 
 export default function Index() {
@@ -52,10 +54,9 @@ export default function Index() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const { toast } = useToast();
 
-  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
     username: '',
-    email: '',
     password: '',
   });
 
@@ -78,14 +79,44 @@ export default function Index() {
     const interval = setInterval(async () => {
       try {
         const msgs = await api.messages.getMessages(currentChatId);
+        const prevLength = messages.length;
         setMessages(msgs);
+        
+        if (msgs.length > prevLength && msgs[msgs.length - 1].sender_id !== currentUser?.id) {
+          toast({
+            title: 'Новое сообщение!',
+            description: msgs[msgs.length - 1].content,
+          });
+        }
       } catch (error) {
         console.error('Failed to fetch messages:', error);
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [currentChatId, isLoggedIn]);
+  }, [currentChatId, isLoggedIn, messages.length, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !isLoggedIn) return;
+
+    api.users.updateStatus(currentUser.id, true);
+
+    const interval = setInterval(() => {
+      api.users.updateStatus(currentUser.id, true);
+    }, 30000);
+
+    const handleBeforeUnload = () => {
+      api.users.updateStatus(currentUser.id, false);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      api.users.updateStatus(currentUser.id, false);
+    };
+  }, [currentUser, isLoggedIn]);
 
   const mockMessages: Message[] = [
     {
@@ -105,7 +136,7 @@ export default function Index() {
   ];
 
   const handleRegister = async () => {
-    if (!registerForm.username || !registerForm.email || !registerForm.password) {
+    if (!registerForm.username || !registerForm.password) {
       toast({
         title: 'Ошибка',
         description: 'Заполните все поля',
@@ -117,7 +148,6 @@ export default function Index() {
     try {
       const user = await api.auth.register(
         registerForm.username,
-        registerForm.email,
         registerForm.password
       );
       
@@ -144,7 +174,7 @@ export default function Index() {
   };
 
   const handleLogin = async () => {
-    if (!loginForm.email || !loginForm.password) {
+    if (!loginForm.username || !loginForm.password) {
       toast({
         title: 'Ошибка',
         description: 'Заполните все поля',
@@ -154,7 +184,7 @@ export default function Index() {
     }
 
     try {
-      const user = await api.auth.login(loginForm.email, loginForm.password);
+      const user = await api.auth.login(loginForm.username, loginForm.password);
       
       if (user.error) {
         toast({
@@ -280,11 +310,10 @@ export default function Index() {
 
             <TabsContent value="login" className="space-y-4">
               <Input
-                type="email"
-                placeholder="Email"
-                value={loginForm.email}
+                placeholder="Никнейм"
+                value={loginForm.username}
                 onChange={(e) =>
-                  setLoginForm({ ...loginForm, email: e.target.value })
+                  setLoginForm({ ...loginForm, username: e.target.value })
                 }
               />
               <Input
@@ -302,18 +331,10 @@ export default function Index() {
 
             <TabsContent value="register" className="space-y-4">
               <Input
-                placeholder="Имя пользователя"
+                placeholder="Никнейм"
                 value={registerForm.username}
                 onChange={(e) =>
                   setRegisterForm({ ...registerForm, username: e.target.value })
-                }
-              />
-              <Input
-                type="email"
-                placeholder="Email"
-                value={registerForm.email}
-                onChange={(e) =>
-                  setRegisterForm({ ...registerForm, email: e.target.value })
                 }
               />
               <Input
@@ -416,7 +437,16 @@ export default function Index() {
                 </Avatar>
                 <div>
                   <h3 className="font-semibold">{selectedContact.contact_name}</h3>
-                  <p className="text-xs text-muted-foreground">в сети</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedContact.contact_is_online ? (
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        в сети
+                      </span>
+                    ) : (
+                      `был(а) ${selectedContact.contact_last_seen ? new Date(selectedContact.contact_last_seen).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'недавно'}`
+                    )}
+                  </p>
                 </div>
               </>
             ) : (

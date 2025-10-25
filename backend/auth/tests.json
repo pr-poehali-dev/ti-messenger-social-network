@@ -5,8 +5,7 @@
       "method": "POST",
       "body": {
         "action": "register",
-        "username": "testuser",
-        "email": "test@example.com",
+        "username": "newtestuser",
         "password": "password123"
       },
       "expectedStatus": 200,

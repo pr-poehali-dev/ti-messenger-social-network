@@ -2,23 +2,38 @@ const API_BASE = {
   auth: 'https://functions.poehali.dev/b5c747e2-21c1-412e-9bde-8196cc6bf7a2',
   chats: 'https://functions.poehali.dev/f21d726a-a7e8-4613-b3e3-10f59691c0ae',
   messages: 'https://functions.poehali.dev/1b187ed0-99ba-4777-bb69-807b7a530eca',
+  users: 'https://functions.poehali.dev/e2b786ab-c042-4798-91ea-833b3b56eaf6',
 };
 
 export const api = {
   auth: {
-    register: async (username: string, email: string, password: string) => {
+    register: async (username: string, password: string) => {
       const response = await fetch(API_BASE.auth, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'register', username, email, password }),
+        body: JSON.stringify({ action: 'register', username, password }),
       });
       return response.json();
     },
-    login: async (email: string, password: string) => {
+    login: async (username: string, password: string) => {
       const response = await fetch(API_BASE.auth, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'login', email, password }),
+        body: JSON.stringify({ action: 'login', username, password }),
+      });
+      return response.json();
+    },
+  },
+  users: {
+    getStatus: async (userId: number) => {
+      const response = await fetch(`${API_BASE.users}?user_id=${userId}`);
+      return response.json();
+    },
+    updateStatus: async (userId: number, isOnline: boolean) => {
+      const response = await fetch(API_BASE.users, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, is_online: isOnline }),
       });
       return response.json();
     },

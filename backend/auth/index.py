@@ -35,13 +35,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if action == 'register':
             username = body_data.get('username')
-            email = body_data.get('email')
             password = body_data.get('password')
             
             password_hash = hashlib.sha256(password.encode()).hexdigest()
+            email = f"{username}@timessenger.local"
             
             cur.execute(
-                "INSERT INTO users (username, email, password_hash, avatar_url) VALUES (%s, %s, %s, %s) RETURNING id, username, email, avatar_url",
+                "INSERT INTO users (username, email, password_hash, avatar_url, is_online) VALUES (%s, %s, %s, %s, TRUE) RETURNING id, username, email, avatar_url, is_online, last_seen",
                 (username, email, password_hash, 'https://cdn.poehali.dev/files/76768b2e-6f03-4ed5-8c11-5e5cc160bb95.png')
             )
             user = cur.fetchone()
@@ -57,19 +57,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'Access-Control-Allow-Origin': '*'
                 },
                 'isBase64Encoded': False,
-                'body': json.dumps(dict(user))
+                'body': json.dumps(dict(user), default=str)
             }
         
         elif action == 'login':
-            email = body_data.get('email')
+            username = body_data.get('username')
             password = body_data.get('password')
             password_hash = hashlib.sha256(password.encode()).hexdigest()
             
             cur.execute(
-                "SELECT id, username, email, avatar_url FROM users WHERE email = %s AND password_hash = %s",
-                (email, password_hash)
+                "UPDATE users SET is_online = TRUE, last_seen = CURRENT_TIMESTAMP WHERE username = %s AND password_hash = %s RETURNING id, username, email, avatar_url, is_online, last_seen",
+                (username, password_hash)
             )
             user = cur.fetchone()
+            conn.commit()
             
             cur.close()
             conn.close()
@@ -82,7 +83,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'Access-Control-Allow-Origin': '*'
                     },
                     'isBase64Encoded': False,
-                    'body': json.dumps(dict(user))
+                    'body': json.dumps(dict(user), default=str)
                 }
             else:
                 return {
