@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -32,11 +33,21 @@ interface User {
   avatar_url?: string;
 }
 
+interface Chat {
+  id: number;
+  contact_name: string;
+  contact_avatar: string;
+  contact_id: number;
+}
+
 export default function Index() {
   const [theme, setTheme] = useState<Theme>('gradient');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<number | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Chat | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const { toast } = useToast();
@@ -88,20 +99,33 @@ export default function Index() {
       return;
     }
 
-    const mockUser: User = {
-      id: 1,
-      username: registerForm.username,
-      email: registerForm.email,
-      avatar_url: 'https://cdn.poehali.dev/files/76768b2e-6f03-4ed5-8c11-5e5cc160bb95.png',
-    };
-
-    setCurrentUser(mockUser);
-    setIsLoggedIn(true);
-    setMessages(mockMessages);
-    toast({
-      title: 'Добро пожаловать!',
-      description: `Аккаунт ${registerForm.username} создан`,
-    });
+    try {
+      const user = await api.auth.register(
+        registerForm.username,
+        registerForm.email,
+        registerForm.password
+      );
+      
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      
+      const chat = await api.chats.createChat(user.id, 2);
+      setCurrentChatId(chat.id);
+      
+      const userChats = await api.chats.getChats(user.id);
+      setChats(userChats);
+      
+      toast({
+        title: 'Добро пожаловать!',
+        description: `Аккаунт ${registerForm.username} создан`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось создать аккаунт',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleLogin = async () => {
@@ -114,49 +138,77 @@ export default function Index() {
       return;
     }
 
-    const mockUser: User = {
-      id: 1,
-      username: 'demo_user',
-      email: loginForm.email,
-      avatar_url: 'https://cdn.poehali.dev/files/76768b2e-6f03-4ed5-8c11-5e5cc160bb95.png',
-    };
-
-    setCurrentUser(mockUser);
-    setIsLoggedIn(true);
-    setMessages(mockMessages);
-    toast({
-      title: 'Успешно!',
-      description: 'Вы вошли в систему',
-    });
+    try {
+      const user = await api.auth.login(loginForm.email, loginForm.password);
+      
+      if (user.error) {
+        toast({
+          title: 'Ошибка',
+          description: 'Неверный email или пароль',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      
+      const userChats = await api.chats.getChats(user.id);
+      setChats(userChats);
+      
+      if (userChats.length > 0) {
+        setCurrentChatId(userChats[0].id);
+        setSelectedContact(userChats[0]);
+        const msgs = await api.messages.getMessages(userChats[0].id);
+        setMessages(msgs);
+      }
+      
+      toast({
+        title: 'Успешно!',
+        description: 'Вы вошли в систему',
+      });
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось войти',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() && !editingMessageId) return;
+    if (!currentChatId || !currentUser) return;
 
-    if (editingMessageId) {
-      setMessages(
-        messages.map((msg) =>
-          msg.id === editingMessageId
-            ? { ...msg, content: messageInput, is_edited: true }
-            : msg
-        )
-      );
-      setEditingMessageId(null);
+    try {
+      if (editingMessageId) {
+        const updatedMsg = await api.messages.editMessage(editingMessageId, messageInput);
+        setMessages(
+          messages.map((msg) =>
+            msg.id === editingMessageId ? updatedMsg : msg
+          )
+        );
+        setEditingMessageId(null);
+        toast({
+          title: 'Сообщение изменено',
+        });
+      } else {
+        const newMessage = await api.messages.sendMessage(
+          currentChatId,
+          currentUser.id,
+          messageInput
+        );
+        setMessages([...messages, newMessage]);
+      }
+
+      setMessageInput('');
+    } catch (error) {
       toast({
-        title: 'Сообщение изменено',
+        title: 'Ошибка',
+        description: 'Не удалось отправить сообщение',
+        variant: 'destructive',
       });
-    } else {
-      const newMessage: Message = {
-        id: messages.length + 1,
-        sender_id: currentUser?.id || 1,
-        content: messageInput,
-        is_edited: false,
-        created_at: new Date().toISOString(),
-      };
-      setMessages([...messages, newMessage]);
     }
-
-    setMessageInput('');
   };
 
   const handleEditMessage = (msg: Message) => {
@@ -164,11 +216,20 @@ export default function Index() {
     setMessageInput(msg.content);
   };
 
-  const handleDeleteMessage = (id: number) => {
-    setMessages(messages.filter((msg) => msg.id !== id));
-    toast({
-      title: 'Сообщение удалено',
-    });
+  const handleDeleteMessage = async (id: number) => {
+    try {
+      await api.messages.deleteMessage(id);
+      setMessages(messages.filter((msg) => msg.id !== id));
+      toast({
+        title: 'Сообщение удалено',
+      });
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось удалить сообщение',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handlePhotoUpload = () => {
@@ -301,21 +362,30 @@ export default function Index() {
 
         <ScrollArea className="flex-1 p-2">
           <div className="space-y-1">
-            <Button
-              variant="ghost"
-              className="w-full justify-start hover:bg-accent"
-            >
-              <Avatar className="mr-3 h-12 w-12">
-                <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=friend1" />
-                <AvatarFallback>F1</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 text-left">
-                <p className="font-medium">Друг 1</p>
-                <p className="text-sm text-muted-foreground truncate">
-                  Привет! Как дела?
-                </p>
-              </div>
-            </Button>
+            {chats.map((chat) => (
+              <Button
+                key={chat.id}
+                variant="ghost"
+                className="w-full justify-start hover:bg-accent"
+                onClick={async () => {
+                  setCurrentChatId(chat.id);
+                  setSelectedContact(chat);
+                  const msgs = await api.messages.getMessages(chat.id);
+                  setMessages(msgs);
+                }}
+              >
+                <Avatar className="mr-3 h-12 w-12">
+                  <AvatarImage src={chat.contact_avatar} />
+                  <AvatarFallback>{chat.contact_name[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 text-left">
+                  <p className="font-medium">{chat.contact_name}</p>
+                  <p className="text-sm text-muted-foreground truncate">
+                    Нажмите для просмотра
+                  </p>
+                </div>
+              </Button>
+            ))}
           </div>
         </ScrollArea>
       </div>
@@ -323,14 +393,20 @@ export default function Index() {
       <div className="flex-1 flex flex-col">
         <div className="h-16 border-b px-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Avatar>
-              <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=friend1" />
-              <AvatarFallback>F1</AvatarFallback>
-            </Avatar>
-            <div>
-              <h3 className="font-semibold">Друг 1</h3>
-              <p className="text-xs text-muted-foreground">в сети</p>
-            </div>
+            {selectedContact ? (
+              <>
+                <Avatar>
+                  <AvatarImage src={selectedContact.contact_avatar} />
+                  <AvatarFallback>{selectedContact.contact_name[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold">{selectedContact.contact_name}</h3>
+                  <p className="text-xs text-muted-foreground">в сети</p>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">Выберите чат</p>
+            )}
           </div>
         </div>
 

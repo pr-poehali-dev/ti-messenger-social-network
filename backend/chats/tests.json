@@ -1,0 +1,14 @@
+{
+  "tests": [
+    {
+      "name": "Create chat",
+      "method": "POST",
+      "body": {
+        "user1_id": 1,
+        "user2_id": 2
+      },
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    }
+  ]
+}
