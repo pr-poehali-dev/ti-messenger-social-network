@@ -72,6 +72,21 @@ export default function Index() {
     }
   }, [theme]);
 
+  useEffect(() => {
+    if (!currentChatId || !isLoggedIn) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const msgs = await api.messages.getMessages(currentChatId);
+        setMessages(msgs);
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentChatId, isLoggedIn]);
+
   const mockMessages: Message[] = [
     {
       id: 1,
